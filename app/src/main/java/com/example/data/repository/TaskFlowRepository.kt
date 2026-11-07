@@ -72,6 +72,8 @@ class TaskFlowRepository(
         val savedTask = if (task.id == 0L) task.copy(id = id) else task
         if (!savedTask.isCompleted && !savedTask.time.isNullOrBlank()) {
             NotificationHelper.scheduleTaskReminder(appContext, savedTask)
+        } else {
+            NotificationHelper.cancelTaskReminder(appContext, savedTask.id)
         }
         return id
     }
@@ -96,6 +98,16 @@ class TaskFlowRepository(
                 if (!reset.time.isNullOrBlank()) {
                     NotificationHelper.scheduleTaskReminder(appContext, reset)
                 }
+            }
+        }
+    }
+
+    suspend fun rescheduleAllActiveReminders() {
+        NotificationHelper.createNotificationChannel(appContext)
+        val allTasks = taskDao.getAllTasksList()
+        for (task in allTasks) {
+            if (!task.isCompleted && !task.time.isNullOrBlank()) {
+                NotificationHelper.scheduleTaskReminder(appContext, task)
             }
         }
     }

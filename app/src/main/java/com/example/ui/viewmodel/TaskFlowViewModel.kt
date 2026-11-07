@@ -98,6 +98,7 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.ensureDefaultWorkspaces()
             repository.rollRecurringTasksIfNeeded()
+            repository.rescheduleAllActiveReminders()
         }
         viewModelScope.launch {
             while (true) {

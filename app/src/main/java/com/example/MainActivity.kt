@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddToHomeScreen
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.School
@@ -83,10 +84,13 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AppTab
 import com.example.ui.viewmodel.TaskFlowViewModel
 import com.example.util.DateUtils
+import com.example.util.HomeScreenShortcutHelper
+import com.example.util.NotificationHelper
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NotificationHelper.createNotificationChannel(this)
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
@@ -120,6 +124,7 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
     }
 
     LaunchedEffect(Unit) {
+        NotificationHelper.createNotificationChannel(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val isNotifGranted = ContextCompat.checkSelfPermission(
                 context,
@@ -182,6 +187,23 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
                         onAddWorkspaceClick = { viewModel.openAddWorkspaceDialog() },
                         onDeleteWorkspace = { viewModel.deleteWorkspace(it) }
                     )
+
+                    // Pin to Home Screen Action Button
+                    IconButton(
+                        onClick = { HomeScreenShortcutHelper.requestPinToHomeScreen(context) },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .testTag("top_bar_pin_home_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddToHomeScreen,
+                            contentDescription = "Pin to Home Screen",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
 
                     // Data Backup & Restore Action Button
                     IconButton(
