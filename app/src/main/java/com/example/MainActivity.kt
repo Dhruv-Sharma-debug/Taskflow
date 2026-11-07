@@ -27,13 +27,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Today
-import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.TaskAlt
@@ -53,9 +51,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,20 +64,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.ui.components.AddEditCalendarEventDialog
 import com.example.ui.components.AddEditCourseDialog
 import com.example.ui.components.AddEditProjectDialog
 import com.example.ui.components.AddEditTaskDialog
 import com.example.ui.components.AddWorkspaceDialog
 import com.example.ui.components.BackupDialog
-import com.example.ui.components.CalendarEventDetailDialog
 import com.example.ui.components.CourseDetailDialog
 import com.example.ui.components.LogTimeDialog
 import com.example.ui.components.ProjectDetailDialog
 import com.example.ui.components.TaskCompletionToast
 import com.example.ui.components.TaskDetailDialog
 import com.example.ui.components.WorkspaceDropdown
-import com.example.ui.screens.CalendarScreen
 import com.example.ui.screens.CoursesScreen
 import com.example.ui.screens.ProjectsScreen
 import com.example.ui.screens.TasksScreen
@@ -91,7 +83,6 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AppTab
 import com.example.ui.viewmodel.TaskFlowViewModel
 import com.example.util.DateUtils
-import com.example.util.GoogleCalendarSyncHelper
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -110,24 +101,10 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    var hasCalendarPermissions by remember {
-        mutableStateOf(GoogleCalendarSyncHelper.hasCalendarPermissions(context))
-    }
-
-    // Request notification + calendar permissions
-    val multiplePermissionsLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
-        val readGranted = result[Manifest.permission.READ_CALENDAR] == true ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
-        val writeGranted = result[Manifest.permission.WRITE_CALENDAR] == true ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
-
-        hasCalendarPermissions = readGranted && writeGranted
-        if (hasCalendarPermissions) {
-            viewModel.syncGoogleCalendarNow()
-        }
-    }
+    // Request notification permission on Android 13+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { /* handled gracefully */ }
 
     // File pickers for JSON backup export & restore
     val exportBackupLauncher = rememberLauncherForActivityResult(
@@ -143,35 +120,23 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
     }
 
     LaunchedEffect(Unit) {
-        val permissionsToRequest = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val isNotifGranted = ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
             if (!isNotifGranted) {
-                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
-        }
-        if (!GoogleCalendarSyncHelper.hasCalendarPermissions(context)) {
-            permissionsToRequest.add(Manifest.permission.READ_CALENDAR)
-            permissionsToRequest.add(Manifest.permission.WRITE_CALENDAR)
-        }
-        if (permissionsToRequest.isNotEmpty()) {
-            multiplePermissionsLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
 
-    // Refresh recurring tasks & sync Google Calendar whenever app is resumed or brought to foreground
+    // Refresh recurring tasks whenever app is resumed or brought to foreground
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {
-                hasCalendarPermissions = GoogleCalendarSyncHelper.hasCalendarPermissions(context)
                 viewModel.refreshRecurringTasks()
-                if (hasCalendarPermissions) {
-                    viewModel.syncGoogleCalendarNow()
-                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -283,26 +248,6 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
                     modifier = Modifier.testTag("nav_tab_tasks")
                 )
 
-                // Calendar Tab
-                NavigationBarItem(
-                    selected = uiState.currentTab == AppTab.CALENDAR,
-                    onClick = { viewModel.selectTab(AppTab.CALENDAR) },
-                    icon = {
-                        Icon(
-                            imageVector = if (uiState.currentTab == AppTab.CALENDAR) Icons.Filled.CalendarMonth else Icons.Outlined.CalendarMonth,
-                            contentDescription = "Calendar",
-                            modifier = Modifier.size(22.dp)
-                        )
-                    },
-                    label = { Text("Calendar", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.testTag("nav_tab_calendar")
-                )
-
                 // Projects Tab
                 NavigationBarItem(
                     selected = uiState.currentTab == AppTab.PROJECTS,
@@ -349,10 +294,6 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
                 onClick = {
                     when (uiState.currentTab) {
                         AppTab.TODAY, AppTab.TASKS -> viewModel.openAddTaskDialog()
-                        AppTab.CALENDAR -> viewModel.openAddCalendarEventDialog(
-                            defaultType = "EVENT",
-                            defaultDateIso = uiState.selectedCalendarDateIso
-                        )
                         AppTab.PROJECTS -> viewModel.openAddProjectDialog()
                         AppTab.COURSES -> viewModel.openAddCourseDialog()
                     }
@@ -362,7 +303,6 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
                     Text(
                         when (uiState.currentTab) {
                             AppTab.TODAY, AppTab.TASKS -> "New Task"
-                            AppTab.CALENDAR -> "New Event"
                             AppTab.PROJECTS -> "New Project"
                             AppTab.COURSES -> "New Course"
                         },
@@ -393,21 +333,7 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
                     uiState = uiState,
                     onAddTaskClick = { viewModel.openAddTaskDialog(priority = 1) },
                     onToggleTaskCompletion = { viewModel.toggleTaskCompletion(it) },
-                    onTaskClick = { viewModel.openTaskDetail(it) },
-                    onAddEventClick = {
-                        viewModel.openAddCalendarEventDialog(
-                            defaultType = "EVENT",
-                            defaultDateIso = DateUtils.getTodayIso()
-                        )
-                    },
-                    onAddAppointmentClick = {
-                        viewModel.openAddCalendarEventDialog(
-                            defaultType = "APPOINTMENT",
-                            defaultDateIso = DateUtils.getTodayIso()
-                        )
-                    },
-                    onToggleCalendarEventCompletion = { viewModel.toggleCalendarEventCompletion(it) },
-                    onCalendarEventClick = { viewModel.openCalendarEventDetail(it) }
+                    onTaskClick = { viewModel.openTaskDetail(it) }
                 )
 
                 AppTab.TASKS -> TasksScreen(
@@ -417,40 +343,6 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
                     onAddTaskClick = { viewModel.openAddTaskDialog() },
                     onToggleTaskCompletion = { viewModel.toggleTaskCompletion(it) },
                     onTaskClick = { viewModel.openTaskDetail(it) }
-                )
-
-                AppTab.CALENDAR -> CalendarScreen(
-                    uiState = uiState,
-                    hasCalendarPermissions = hasCalendarPermissions,
-                    onSelectDate = { viewModel.setSelectedCalendarDate(it) },
-                    onFilterSelect = { viewModel.setCalendarFilter(it) },
-                    onAddEventClick = { dateIso ->
-                        viewModel.openAddCalendarEventDialog("EVENT", dateIso)
-                    },
-                    onAddAppointmentClick = { dateIso ->
-                        viewModel.openAddCalendarEventDialog("APPOINTMENT", dateIso)
-                    },
-                    onAddTaskForDateClick = { dateIso ->
-                        viewModel.openAddTaskDialog(priority = 2, scheduledDate = dateIso)
-                    },
-                    onEventClick = { viewModel.openCalendarEventDetail(it) },
-                    onToggleEvent = { viewModel.toggleCalendarEventCompletion(it) },
-                    onTaskClick = { viewModel.openTaskDetail(it) },
-                    onToggleTask = { viewModel.toggleTaskCompletion(it) },
-                    onSyncGoogleCalendarClick = {
-                        if (!GoogleCalendarSyncHelper.hasCalendarPermissions(context)) {
-                            multiplePermissionsLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.READ_CALENDAR,
-                                    Manifest.permission.WRITE_CALENDAR
-                                )
-                            )
-                        } else {
-                            hasCalendarPermissions = true
-                            viewModel.syncGoogleCalendarNow()
-                        }
-                    },
-                    onDismissSyncMessage = { viewModel.clearCalendarSyncMessage() }
                 )
 
                 AppTab.PROJECTS -> ProjectsScreen(
@@ -495,24 +387,6 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
                 viewModel.deleteTask(it)
             },
             onAddSubtask = { t, title -> viewModel.addSubtask(t, title) }
-        )
-    }
-
-    val selectedCalendarEventId by viewModel.selectedCalendarEventId.collectAsState()
-    val calendarEventDetail = uiState.allCalendarEvents.find { it.id == selectedCalendarEventId }
-    calendarEventDetail?.let { event ->
-        CalendarEventDetailDialog(
-            event = event,
-            onDismiss = { viewModel.closeCalendarEventDetail() },
-            onToggleCompletion = { viewModel.toggleCalendarEventCompletion(it) },
-            onEditClick = {
-                viewModel.closeCalendarEventDetail()
-                viewModel.openEditCalendarEventDialog(it)
-            },
-            onDeleteClick = {
-                viewModel.closeCalendarEventDetail()
-                viewModel.deleteCalendarEvent(it)
-            }
         )
     }
 
@@ -570,23 +444,6 @@ fun TaskFlowApp(viewModel: TaskFlowViewModel = viewModel()) {
             onDismiss = { viewModel.closeTaskDialog() },
             onSave = { title, desc, time, dur, pri, isRec, repDays, subtasks, scheduledDate ->
                 viewModel.saveTask(title, desc, time, dur, pri, isRec, repDays, subtasks, scheduledDate)
-            }
-        )
-    }
-
-    // Add / Edit Calendar Event or Appointment Dialog
-    val isCalendarEventDialogOpen by viewModel.isCalendarEventDialogOpen.collectAsState()
-    val editingCalendarEvent by viewModel.editingCalendarEvent.collectAsState()
-    val newCalendarEventDefaultType by viewModel.newCalendarEventDefaultType.collectAsState()
-    val newCalendarEventDefaultDate by viewModel.newCalendarEventDefaultDate.collectAsState()
-    if (isCalendarEventDialogOpen) {
-        AddEditCalendarEventDialog(
-            initialEvent = editingCalendarEvent,
-            defaultType = newCalendarEventDefaultType,
-            defaultDateIso = newCalendarEventDefaultDate,
-            onDismiss = { viewModel.closeCalendarEventDialog() },
-            onSave = { title, notes, dateIso, startTime, endTime, type ->
-                viewModel.saveCalendarEvent(title, notes, dateIso, startTime, endTime, type)
             }
         )
     }

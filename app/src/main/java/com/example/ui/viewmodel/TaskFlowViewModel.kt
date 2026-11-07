@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
-import com.example.data.model.CalendarEventEntity
 import com.example.data.model.CourseEntity
 import com.example.data.model.DailyLogEntity
 import com.example.data.model.ProjectEntity
@@ -32,7 +31,6 @@ import java.util.UUID
 enum class AppTab(val title: String) {
     TODAY("Today"),
     TASKS("Tasks"),
-    CALENDAR("Calendar"),
     PROJECTS("Projects"),
     COURSES("Courses")
 }
@@ -66,11 +64,6 @@ data class TaskFlowUiState(
     val allTasks: List<TaskEntity> = emptyList(),
     val todayTasks: List<TaskEntity> = emptyList(),
     val todayP1Tasks: List<TaskEntity> = emptyList(),
-    val allCalendarEvents: List<CalendarEventEntity> = emptyList(),
-    val todayCalendarEvents: List<CalendarEventEntity> = emptyList(),
-    val selectedCalendarDateIso: String = DateUtils.getTodayIso(),
-    val calendarFilter: String = "All", // "All", "Events", "Appointments", "Tasks"
-    val calendarSyncMessage: String? = null,
     val allProjects: List<ProjectEntity> = emptyList(),
     val p1Projects: List<ProjectEntity> = emptyList(),
     val allCourses: List<CourseEntity> = emptyList(),
@@ -86,7 +79,6 @@ data class TaskFlowUiState(
 private data class TaskData(
     val tasks: List<TaskEntity>,
     val logs: List<DailyLogEntity>,
-    val calendarEvents: List<CalendarEventEntity>,
     val recentCompletedTask: TaskEntity? = null
 )
 
@@ -95,12 +87,6 @@ private data class ProjectsAndCourses(
     val p1Projects: List<ProjectEntity>,
     val allCourses: List<CourseEntity>,
     val activeCourses: List<CourseEntity>
-)
-
-private data class CalendarViewConfig(
-    val selectedDateIso: String,
-    val calendarFilter: String,
-    val syncMessage: String?
 )
 
 class TaskFlowViewModel(application: Application) : AndroidViewModel(application) {
@@ -112,7 +98,6 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.ensureDefaultWorkspaces()
             repository.rollRecurringTasksIfNeeded()
-            repository.syncWithGoogleCalendar(_selectedWorkspaceId.value)
         }
         viewModelScope.launch {
             while (true) {
@@ -133,11 +118,6 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
     private val _taskSearchQuery = MutableStateFlow("")
     private val _selectedWorkspaceId = MutableStateFlow("personal")
 
-    // Calendar UI states
-    private val _selectedCalendarDateIso = MutableStateFlow(DateUtils.getTodayIso())
-    private val _calendarFilter = MutableStateFlow("All")
-    private val _calendarSyncMessage = MutableStateFlow<String?>(null)
-
     // Backup & Workspace UI states
     private val _isAddWorkspaceDialogOpen = MutableStateFlow(false)
     private val _isBackupDialogOpen = MutableStateFlow(false)
@@ -153,15 +133,6 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
     var loggingTimeTask = MutableStateFlow<TaskEntity?>(null)
         private set
 
-    var editingCalendarEvent = MutableStateFlow<CalendarEventEntity?>(null)
-        private set
-    var isCalendarEventDialogOpen = MutableStateFlow(false)
-        private set
-    var newCalendarEventDefaultType = MutableStateFlow("EVENT")
-        private set
-    var newCalendarEventDefaultDate = MutableStateFlow(DateUtils.getTodayIso())
-        private set
-
     var editingProject = MutableStateFlow<ProjectEntity?>(null)
         private set
     var isProjectDialogOpen = MutableStateFlow(false)
@@ -174,8 +145,6 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
 
     var selectedTaskId = MutableStateFlow<Long?>(null)
         private set
-    var selectedCalendarEventId = MutableStateFlow<Long?>(null)
-        private set
     var selectedProjectId = MutableStateFlow<Long?>(null)
         private set
     var selectedCourseId = MutableStateFlow<Long?>(null)
@@ -187,14 +156,6 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
 
     fun closeTaskDetail() {
         selectedTaskId.value = null
-    }
-
-    fun openCalendarEventDetail(event: CalendarEventEntity) {
-        selectedCalendarEventId.value = event.id
-    }
-
-    fun closeCalendarEventDetail() {
-        selectedCalendarEventId.value = null
     }
 
     fun openProjectDetail(project: ProjectEntity) {
@@ -219,10 +180,9 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
     private val taskDataFlow = combine(
         repository.allTasks,
         repository.recentDailyLogs,
-        repository.allCalendarEvents,
         _recentCompletedTask
-    ) { tasks, logs, events, recent ->
-        TaskData(tasks, logs, events, recent)
+    ) { tasks, logs, recent ->
+        TaskData(tasks, logs, recent)
     }
 
     private val projectsAndCoursesFlow = combine(
@@ -232,14 +192,6 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
         repository.activeCourses
     ) { allProjects, p1Projects, allCourses, activeCourses ->
         ProjectsAndCourses(allProjects, p1Projects, allCourses, activeCourses)
-    }
-
-    private val calendarConfigFlow = combine(
-        _selectedCalendarDateIso,
-        _calendarFilter,
-        _calendarSyncMessage
-    ) { selectedDate, filter, msg ->
-        CalendarViewConfig(selectedDate, filter, msg)
     }
 
     val uiState: StateFlow<TaskFlowUiState> = combine(
@@ -256,10 +208,9 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
             _isAddWorkspaceDialogOpen,
             _isBackupDialogOpen,
             _backupOperationMessage,
-            _pendingRestoreBackup,
-            calendarConfigFlow
-        ) { addW, backup, msg, pending, calCfg ->
-            Tuple5(addW, backup, msg, pending, calCfg)
+            _pendingRestoreBackup
+        ) { addW, backup, msg, pending ->
+            Tuple4(addW, backup, msg, pending)
         },
         taskDataFlow,
         projectsAndCoursesFlow
@@ -274,7 +225,6 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
         val isBackupDialogOpen = t2.b
         val backupOperationMessage = t2.c
         val pendingRestoreBackup = t2.d
-        val calConfig = t2.e
 
         val currentWorkspace = workspaces.find { it.id == workspaceId }
             ?: workspaces.firstOrNull { it.isDefault }
@@ -284,14 +234,12 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
         // Filter all entities by effective workspace
         val tasks = taskData.tasks.filter { it.workspaceId == effectiveWorkspaceId }
         val logs = taskData.logs.filter { it.workspaceId == effectiveWorkspaceId }
-        val calendarEvents = taskData.calendarEvents.filter { it.workspaceId == effectiveWorkspaceId }
         val projects = pcData.allProjects.filter { it.workspaceId == effectiveWorkspaceId }
         val p1Projects = pcData.p1Projects.filter { it.workspaceId == effectiveWorkspaceId }
         val courses = pcData.allCourses.filter { it.workspaceId == effectiveWorkspaceId }
         val activeCourses = pcData.activeCourses.filter { it.workspaceId == effectiveWorkspaceId }
 
         val todayIso = DateUtils.getTodayIso()
-        val todayCalendarEvents = calendarEvents.filter { it.dateIso == todayIso }
 
         val completedTodayTasks = tasks.filter { it.isCompleted && it.lastCompletedDate == todayIso }
         // Today's active tasks: ONLY uncompleted tasks active for today (scheduled or overdue carry-over)
@@ -362,11 +310,6 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
             allTasks = tasks,
             todayTasks = activeTodayTasks,
             todayP1Tasks = todayP1Tasks,
-            allCalendarEvents = calendarEvents,
-            todayCalendarEvents = todayCalendarEvents,
-            selectedCalendarDateIso = calConfig.selectedDateIso,
-            calendarFilter = calConfig.calendarFilter,
-            calendarSyncMessage = calConfig.syncMessage,
             allProjects = projects,
             p1Projects = p1Projects,
             allCourses = courses,
@@ -386,7 +329,7 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
 
     fun selectTab(tab: AppTab) {
         _currentTab.value = tab
-        if (tab == AppTab.TODAY || tab == AppTab.TASKS || tab == AppTab.CALENDAR) {
+        if (tab == AppTab.TODAY || tab == AppTab.TASKS) {
             refreshRecurringTasks()
         }
     }
@@ -397,95 +340,6 @@ class TaskFlowViewModel(application: Application) : AndroidViewModel(application
 
     fun setTaskSearchQuery(query: String) {
         _taskSearchQuery.value = query
-    }
-
-    // Calendar actions
-    fun setSelectedCalendarDate(dateIso: String) {
-        _selectedCalendarDateIso.value = dateIso
-    }
-
-    fun setCalendarFilter(filter: String) {
-        _calendarFilter.value = filter
-    }
-
-    fun syncGoogleCalendarNow() {
-        viewModelScope.launch {
-            val result = repository.syncWithGoogleCalendar(_selectedWorkspaceId.value)
-            _calendarSyncMessage.value = result.message
-        }
-    }
-
-    fun clearCalendarSyncMessage() {
-        _calendarSyncMessage.value = null
-    }
-
-    fun openAddCalendarEventDialog(
-        defaultType: String = "EVENT",
-        defaultDateIso: String? = null
-    ) {
-        newCalendarEventDefaultType.value = defaultType
-        newCalendarEventDefaultDate.value = defaultDateIso ?: _selectedCalendarDateIso.value
-        editingCalendarEvent.value = null
-        isCalendarEventDialogOpen.value = true
-    }
-
-    fun openEditCalendarEventDialog(event: CalendarEventEntity) {
-        editingCalendarEvent.value = event
-        isCalendarEventDialogOpen.value = true
-    }
-
-    fun closeCalendarEventDialog() {
-        editingCalendarEvent.value = null
-        isCalendarEventDialogOpen.value = false
-    }
-
-    fun saveCalendarEvent(
-        title: String,
-        notes: String,
-        dateIso: String,
-        startTime: String,
-        endTime: String,
-        type: String
-    ) {
-        viewModelScope.launch {
-            val existing = editingCalendarEvent.value
-            val currentWorkspaceId = _selectedWorkspaceId.value
-            val toSave = if (existing != null) {
-                existing.copy(
-                    title = title,
-                    notes = notes,
-                    dateIso = dateIso,
-                    startTime = startTime,
-                    endTime = endTime,
-                    type = type,
-                    updatedAt = System.currentTimeMillis()
-                )
-            } else {
-                CalendarEventEntity(
-                    title = title,
-                    notes = notes,
-                    dateIso = dateIso,
-                    startTime = startTime,
-                    endTime = endTime,
-                    type = type,
-                    workspaceId = currentWorkspaceId
-                )
-            }
-            repository.saveCalendarEvent(toSave)
-            closeCalendarEventDialog()
-        }
-    }
-
-    fun deleteCalendarEvent(event: CalendarEventEntity) {
-        viewModelScope.launch {
-            repository.deleteCalendarEvent(event)
-        }
-    }
-
-    fun toggleCalendarEventCompletion(event: CalendarEventEntity) {
-        viewModelScope.launch {
-            repository.toggleCalendarEventCompletion(event)
-        }
     }
 
     // Workspace actions

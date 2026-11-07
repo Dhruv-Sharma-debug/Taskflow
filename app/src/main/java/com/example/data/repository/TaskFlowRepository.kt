@@ -2,7 +2,6 @@ package com.example.data.repository
 
 import android.content.Context
 import com.example.data.local.AppDatabase
-import com.example.data.model.CalendarEventEntity
 import com.example.data.model.CourseEntity
 import com.example.data.model.DailyLogEntity
 import com.example.data.model.ProjectEntity
@@ -11,8 +10,6 @@ import com.example.data.model.TaskEntity
 import com.example.data.model.WorkspaceEntity
 import com.example.util.BackupData
 import com.example.util.DateUtils
-import com.example.util.GoogleCalendarSyncHelper
-import com.example.util.GoogleCalendarSyncResult
 import com.example.util.NotificationHelper
 import com.example.util.RestoreMode
 import kotlinx.coroutines.flow.Flow
@@ -28,7 +25,6 @@ class TaskFlowRepository(
     private val projectDao = database.projectDao()
     private val courseDao = database.courseDao()
     private val dailyLogDao = database.dailyLogDao()
-    private val calendarEventDao = database.calendarEventDao()
 
     val allWorkspaces: Flow<List<WorkspaceEntity>> = workspaceDao.getAllWorkspaces()
     val allTasks: Flow<List<TaskEntity>> = taskDao.getAllTasks()
@@ -37,7 +33,6 @@ class TaskFlowRepository(
     val allCourses: Flow<List<CourseEntity>> = courseDao.getAllCourses()
     val activeCourses: Flow<List<CourseEntity>> = courseDao.getActiveCourses()
     val recentDailyLogs: Flow<List<DailyLogEntity>> = dailyLogDao.getRecentLogs(60)
-    val allCalendarEvents: Flow<List<CalendarEventEntity>> = calendarEventDao.getAllEvents()
 
     suspend fun ensureDefaultWorkspaces() {
         val existing = workspaceDao.getAllWorkspacesList()
@@ -68,29 +63,21 @@ class TaskFlowRepository(
         taskDao.deleteTasksByWorkspace(workspace.id)
         projectDao.deleteProjectsByWorkspace(workspace.id)
         courseDao.deleteCoursesByWorkspace(workspace.id)
-        calendarEventDao.deleteEventsByWorkspace(workspace.id)
         workspaceDao.deleteWorkspace(workspace)
         ensureDefaultWorkspaces()
     }
 
     suspend fun saveTask(task: TaskEntity): Long {
         val id = taskDao.insertTask(task)
-        var savedTask = if (task.id == 0L) task.copy(id = id) else task
+        val savedTask = if (task.id == 0L) task.copy(id = id) else task
         if (!savedTask.isCompleted && !savedTask.time.isNullOrBlank()) {
             NotificationHelper.scheduleTaskReminder(appContext, savedTask)
-        }
-        // Sync to dedicated "TaskFlow" Google Calendar if permissions are granted
-        val googleId = GoogleCalendarSyncHelper.upsertTaskToGoogleCalendar(appContext, savedTask)
-        if (googleId != null && googleId != savedTask.googleCalendarEventId) {
-            savedTask = savedTask.copy(googleCalendarEventId = googleId)
-            taskDao.updateTask(savedTask)
         }
         return id
     }
 
     suspend fun deleteTask(task: TaskEntity) {
         NotificationHelper.cancelTaskReminder(appContext, task.id)
-        GoogleCalendarSyncHelper.deleteFromGoogleCalendar(appContext, task.googleCalendarEventId)
         taskDao.deleteTask(task)
     }
 
@@ -125,7 +112,6 @@ class TaskFlowRepository(
             lastCompletedDate = today
         )
         taskDao.updateTask(updated)
-        GoogleCalendarSyncHelper.upsertTaskToGoogleCalendar(appContext, updated)
         recordTodayCompletion(addedMins, task.workspaceId)
         return updated
     }
@@ -143,7 +129,6 @@ class TaskFlowRepository(
         if (!updated.time.isNullOrBlank()) {
             NotificationHelper.scheduleTaskReminder(appContext, updated)
         }
-        GoogleCalendarSyncHelper.upsertTaskToGoogleCalendar(appContext, updated)
         revertTodayCompletion(removedMins, task.workspaceId)
         return updated
     }
@@ -161,7 +146,6 @@ class TaskFlowRepository(
         if (!updated.time.isNullOrBlank()) {
             NotificationHelper.scheduleTaskReminder(appContext, updated)
         }
-        GoogleCalendarSyncHelper.upsertTaskToGoogleCalendar(appContext, updated)
         revertTodayCompletion(removedMins, task.workspaceId)
         return updated
     }
@@ -188,7 +172,6 @@ class TaskFlowRepository(
                 lastCompletedDate = today
             )
             taskDao.updateTask(completed)
-            GoogleCalendarSyncHelper.upsertTaskToGoogleCalendar(appContext, completed)
             recordTodayCompletion(addedMins, task.workspaceId)
         } else {
             val updated = task.copy(loggedMins = newLogged)
@@ -214,70 +197,6 @@ class TaskFlowRepository(
         )
         val updated = task.copy(subtasks = task.subtasks + newSub)
         taskDao.updateTask(updated)
-    }
-
-    // Calendar Events & Appointments (with dedicated "TaskFlow" Google Calendar sync)
-    suspend fun saveCalendarEvent(event: CalendarEventEntity): Long {
-        val id = calendarEventDao.insertEvent(event)
-        var saved = if (event.id == 0L) event.copy(id = id) else event
-        val gId = GoogleCalendarSyncHelper.upsertCalendarEventToGoogleCalendar(appContext, saved)
-        if (gId != null && gId != saved.googleCalendarEventId) {
-            saved = saved.copy(googleCalendarEventId = gId)
-            calendarEventDao.updateEvent(saved)
-        }
-        return id
-    }
-
-    suspend fun deleteCalendarEvent(event: CalendarEventEntity) {
-        GoogleCalendarSyncHelper.deleteFromGoogleCalendar(appContext, event.googleCalendarEventId)
-        calendarEventDao.deleteEvent(event)
-    }
-
-    suspend fun toggleCalendarEventCompletion(event: CalendarEventEntity) {
-        val updated = event.copy(
-            isCompleted = !event.isCompleted,
-            updatedAt = System.currentTimeMillis()
-        )
-        calendarEventDao.updateEvent(updated)
-        GoogleCalendarSyncHelper.upsertCalendarEventToGoogleCalendar(appContext, updated)
-    }
-
-    suspend fun syncWithGoogleCalendar(activeWorkspaceId: String): GoogleCalendarSyncResult {
-        val tasks = taskDao.getAllTasksList()
-        val events = calendarEventDao.getAllEventsList()
-        val result = GoogleCalendarSyncHelper.performTwoWaySync(
-            context = appContext,
-            localTasks = tasks,
-            localEvents = events,
-            activeWorkspaceId = activeWorkspaceId
-        )
-
-        // Update local tasks with newly assigned Google Calendar event IDs
-        if (result.updatedTaskGoogleIds.isNotEmpty()) {
-            for (task in tasks) {
-                val gId = result.updatedTaskGoogleIds[task.id]
-                if (gId != null) {
-                    taskDao.updateTask(task.copy(googleCalendarEventId = gId))
-                }
-            }
-        }
-
-        // Update local events with newly assigned Google Calendar event IDs
-        if (result.updatedEventGoogleIds.isNotEmpty()) {
-            for (ev in events) {
-                val gId = result.updatedEventGoogleIds[ev.id]
-                if (gId != null) {
-                    calendarEventDao.updateEvent(ev.copy(googleCalendarEventId = gId))
-                }
-            }
-        }
-
-        // Insert newly pulled events/appointments from Google Calendar into local database
-        if (result.importedEvents.isNotEmpty()) {
-            calendarEventDao.insertEvents(result.importedEvents)
-        }
-
-        return result
     }
 
     // Projects
@@ -373,8 +292,7 @@ class TaskFlowRepository(
             tasks = taskDao.getAllTasksList(),
             projects = projectDao.getAllProjectsList(),
             courses = courseDao.getAllCoursesList(),
-            dailyLogs = dailyLogDao.getAllLogsList(),
-            calendarEvents = calendarEventDao.getAllEventsList()
+            dailyLogs = dailyLogDao.getAllLogsList()
         )
     }
 
@@ -384,7 +302,6 @@ class TaskFlowRepository(
             projectDao.clearAllProjects()
             courseDao.clearAllCourses()
             dailyLogDao.clearAllLogs()
-            calendarEventDao.deleteAllEvents()
             workspaceDao.clearAllWorkspaces()
         }
 
@@ -412,11 +329,6 @@ class TaskFlowRepository(
         // Restore Courses
         if (backupData.courses.isNotEmpty()) {
             courseDao.insertCourses(backupData.courses)
-        }
-
-        // Restore Calendar Events
-        if (backupData.calendarEvents.isNotEmpty()) {
-            calendarEventDao.insertEvents(backupData.calendarEvents)
         }
 
         // Restore Daily Logs

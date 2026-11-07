@@ -2,7 +2,6 @@ package com.example.util
 
 import android.content.Context
 import android.net.Uri
-import com.example.data.model.CalendarEventEntity
 import com.example.data.model.CourseEntity
 import com.example.data.model.DailyLogEntity
 import com.example.data.model.ProjectEntity
@@ -23,8 +22,7 @@ data class BackupData(
     val tasks: List<TaskEntity>,
     val projects: List<ProjectEntity>,
     val courses: List<CourseEntity>,
-    val dailyLogs: List<DailyLogEntity>,
-    val calendarEvents: List<CalendarEventEntity> = emptyList()
+    val dailyLogs: List<DailyLogEntity>
 )
 
 data class BackupSummary(
@@ -144,24 +142,6 @@ object BackupHelper {
             logsArr.put(obj)
         }
         root.put("dailyLogs", logsArr)
-
-        // Calendar Events & Appointments
-        val eventsArr = JSONArray()
-        for (ev in data.calendarEvents) {
-            val obj = JSONObject()
-            obj.put("id", ev.id)
-            obj.put("title", ev.title)
-            obj.put("notes", ev.notes)
-            obj.put("dateIso", ev.dateIso)
-            obj.put("startTime", ev.startTime)
-            obj.put("endTime", ev.endTime)
-            obj.put("type", ev.type)
-            obj.put("isCompleted", ev.isCompleted)
-            obj.put("workspaceId", ev.workspaceId)
-            obj.put("createdAt", ev.createdAt)
-            eventsArr.put(obj)
-        }
-        root.put("calendarEvents", eventsArr)
 
         return root.toString(2)
     }
@@ -308,29 +288,6 @@ object BackupHelper {
             }
         }
 
-        // Calendar Events
-        val calendarEvents = mutableListOf<CalendarEventEntity>()
-        val eventsArr = root.optJSONArray("calendarEvents")
-        if (eventsArr != null) {
-            for (i in 0 until eventsArr.length()) {
-                val obj = eventsArr.getJSONObject(i)
-                calendarEvents.add(
-                    CalendarEventEntity(
-                        id = obj.optLong("id", 0),
-                        title = obj.getString("title"),
-                        notes = obj.optString("notes", ""),
-                        dateIso = obj.optString("dateIso", DateUtils.getTodayIso()),
-                        startTime = obj.optString("startTime", "09:00 AM"),
-                        endTime = obj.optString("endTime", "10:00 AM"),
-                        type = obj.optString("type", "EVENT"),
-                        isCompleted = obj.optBoolean("isCompleted", false),
-                        workspaceId = obj.optString("workspaceId", "personal"),
-                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
-                    )
-                )
-            }
-        }
-
         return BackupData(
             version = version,
             exportedAt = exportedAt,
@@ -339,8 +296,7 @@ object BackupHelper {
             tasks = tasks,
             projects = projects,
             courses = courses,
-            dailyLogs = dailyLogs,
-            calendarEvents = calendarEvents
+            dailyLogs = dailyLogs
         )
     }
 

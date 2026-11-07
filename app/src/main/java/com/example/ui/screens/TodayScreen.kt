@@ -34,13 +34,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.model.CalendarEventEntity
 import com.example.data.model.TaskEntity
-import com.example.ui.components.CalendarEventCard
 import com.example.ui.components.TaskCard
 import com.example.ui.components.WeeklyActivitySection
-import com.example.ui.theme.BrandCyan
-import com.example.ui.theme.BrandIndigoDark
 import com.example.ui.theme.Priority1Color
 import com.example.ui.viewmodel.TaskFlowUiState
 import com.example.util.DateUtils
@@ -51,10 +47,6 @@ fun TodayDashboardScreen(
     onAddTaskClick: () -> Unit,
     onToggleTaskCompletion: (TaskEntity) -> Unit,
     onTaskClick: (TaskEntity) -> Unit,
-    onAddEventClick: () -> Unit = {},
-    onAddAppointmentClick: () -> Unit = {},
-    onToggleCalendarEventCompletion: (CalendarEventEntity) -> Unit = {},
-    onCalendarEventClick: (CalendarEventEntity) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val cap = uiState.dailyCapacity
@@ -284,99 +276,6 @@ fun TodayDashboardScreen(
                     task = task,
                     onToggleCompletion = onToggleTaskCompletion,
                     onTaskClick = onTaskClick
-                )
-            }
-        }
-
-        // 4. Today's Events & Appointments Section
-        item {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(BrandCyan.copy(alpha = 0.15f))
-                            .padding(horizontal = 7.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = "GCal",
-                            color = BrandCyan,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Today's Events & Appointments (${uiState.todayCalendarEvents.size})",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "+ Event",
-                        color = BrandIndigoDark,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onAddEventClick() }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                            .testTag("today_add_event_btn")
-                    )
-                    Text(
-                        text = "+ Appt",
-                        color = BrandCyan,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onAddAppointmentClick() }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                            .testTag("today_add_appointment_btn")
-                    )
-                }
-            }
-        }
-
-        if (uiState.todayCalendarEvents.isEmpty()) {
-            item {
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp)
-                    ) {
-                        Text(
-                            text = "No events or appointments scheduled for today",
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        } else {
-            items(uiState.todayCalendarEvents, key = { "today_cal_event_${it.id}" }) { event ->
-                CalendarEventCard(
-                    event = event,
-                    onToggleCompletion = onToggleCalendarEventCompletion,
-                    onEventClick = onCalendarEventClick
                 )
             }
         }

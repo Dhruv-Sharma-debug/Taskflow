@@ -22,6 +22,5 @@ data class TaskEntity(
     val completedAt: Long? = null,
     val lastCompletedDate: String? = null, // "YYYY-MM-DD" of last completion for repeating tasks
     val preCompletionLoggedMins: Int = 0, // Stored progress prior to completion for exact undo
-    val workspaceId: String = "personal",
-    val googleCalendarEventId: Long? = null // Linked event ID in dedicated TaskFlow Google Calendar
+    val workspaceId: String = "personal"
 )

@@ -253,22 +253,6 @@ fun TaskDetailDialog(
                                         )
                                     }
                                 }
-
-                                if (task.googleCalendarEventId != null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(BrandEmerald.copy(alpha = 0.16f))
-                                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                                    ) {
-                                        Text(
-                                            text = "Synced to TaskFlow GCal",
-                                            color = BrandEmerald,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
