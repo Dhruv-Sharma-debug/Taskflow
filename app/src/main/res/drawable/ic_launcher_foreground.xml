@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group>
+        <!-- Dark inner disk -->
+        <path
+            android:fillColor="#1C2136"
+            android:pathData="M54,54m-27,0a27,27 0,1 1,54 0a27,27 0,1 1,-54 0" />
+
+        <!-- Cyan/Blue circular progress arc -->
+        <path
+            android:strokeColor="#38BDF8"
+            android:strokeWidth="3.5"
+            android:strokeLineCap="round"
+            android:pathData="M77,54 A23,23 0 1,0 54,77" />
+
+        <!-- Progress endpoint glow dot -->
+        <path
+            android:fillColor="#60A5FA"
+            android:pathData="M54,77m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+
+        <!-- Green Checkmark Circle Badge -->
+        <path
+            android:fillColor="#10B981"
+            android:pathData="M43,54m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+
+        <!-- Crisp white check inside badge -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M40.5,54.5l2,2l4,-4l1.2,1.2l-5.2,5.2l-3.2,-3.2z" />
+
+        <!-- Horizontal Task Flow Lines -->
+        <path
+            android:strokeColor="#64748B"
+            android:strokeWidth="2.8"
+            android:strokeLineCap="round"
+            android:pathData="M55,49.5 L70,49.5" />
+        <path
+            android:strokeColor="#64748B"
+            android:strokeWidth="2.8"
+            android:strokeLineCap="round"
+            android:pathData="M55,54 L66,54" />
+        <path
+            android:strokeColor="#64748B"
+            android:strokeWidth="2.8"
+            android:strokeLineCap="round"
+            android:pathData="M55,58.5 L69,58.5" />
+    </group>
+</vector>

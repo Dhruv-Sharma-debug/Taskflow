@@ -1,0 +1,6 @@
+{
+  "name": "TaskFlow",
+  "description": "Daily productivity planner with recurring tasks, project and course tracking, and weekly activity charts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
